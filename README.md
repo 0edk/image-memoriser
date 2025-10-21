@@ -10,7 +10,6 @@ This documentation was largely written by an LLM, but the human confirms that it
 - Install [ImageMagick]( https://imagemagick.org/ ) to somewhere in `$PATH`
 
 ## Usages
-
 Run
 ```sh
 ./main.sh MODE IMAGE LABELS
@@ -19,8 +18,8 @@ where `MODE` is a keyword listed below, `IMAGE` is a path to an image file, and 
 
 The modes:
 
-| Mode   | Purpose | Command example | Notes |
-|--------|---------|-----------------|-------|
+| Mode   | Purpose | Notes |
+|--------|---------|-------|
 | label  | Middle-click on an image to assign names (creates label file) | |
 | teach  | Annotate the image with labels from the file | Prompts for output filename and shows the annotated image. |
 | names  | Quiz: shown each point in turn, type its label | Uses dmenu to pick a name. Wrong answers are saved to reteach. Enter `quit` in dmenu to stop early. |
@@ -28,10 +27,9 @@ The modes:
 | close  | Quiz: identify nearest neighbours to given places | Expects *K* of the 2 *K* nearest neighbours. *K* defaults to 2. Mistakes are saved likewise. |
 
 ## Data format
-
 A label file is text, with one entry per line, in the form `X Y NAME`.
-- X and Y: integer pixel coordinates in the image (space-separated)
-- NAME: label (may contain spaces)
+- `X` and `Y`: integer pixel coordinates in the image (space-separated)
+- `NAME`: label (may contain spaces)
 
 For example:
 ```
@@ -39,8 +37,9 @@ For example:
 482 91 Notre-Dame
 ```
 
-## Example sessions
+The label mode handles these details to write such files.
 
+## Example sessions
 1. Create a label file interactively:
    `./main.sh label map.png map.labels`
    - Click points on the image; for each click give a name when prompted.
