@@ -1,37 +1,34 @@
 #!/bin/sh
 # $1 = mode, $2 = image file, $3 = label file
 
-PF=`mktemp`
-NF=`mktemp`
-NL=`mktemp`
+points_left=`mktemp`
+failures=`mktemp`
+name_options=`mktemp`
 
 alias iv="/usr/local/bin/iv"
 
-lowercase() {
-    echo "$1" | tr a-z A-Z
-}
-
+# $1 = x1, $2 = y1, $3 = x2, $4 = y2
 distance() {
     printf 'sqrt((%d-%d)^2+(%d-%d)^2)\n' "$3" "$1" "$4" "$2" | bc
 }
 
 initqc() {
-    cp "$1" "$PF"
+    cp "$1" "$points_left"
 }
 
 mistake() {
     printf 'Wrong, actually %s\n' "$1"
-    printf '%d %d %s\n' "$TX" "$TY" "$NAME" >>"$NF"
+    printf '%d %d %s\n' "$TX" "$TY" "$NAME" >>"$failures"
 }
 
 reteach() {
     printf "Here's what you missed ...\n"
-    "$0" teach "$1" "$NF"
-    mv "$NF" "$PF"
+    "$0" teach "$1" "$failures"
+    mv "$failures" "$points_left"
 }
 
 namelist() {
-    sed 's/^[0-9]\+ [0-9]\+ //' <"$1" | shuf >"$NL"
+    sed 's/^[0-9]\+ [0-9]\+ //' <"$1" | shuf >"$name_options"
 }
 
 # $1 = input image, $2 = output image, $3 = x-centre, $4 = y-centre, $5 = text, $6 = colour
@@ -43,7 +40,9 @@ dotmark() {
     C="${6:-black}"
     DCC="circle $((X-R)),$((Y-R)) $((X+R)),$((Y+R))"
     DLC="text $X,$((Y-2*R)) '$T'"
-    magick "$1" -fill none -stroke "$C" -strokewidth "$((2*R))" -draw "$DCC" -font FreeSans-Bold -fill "$C" -stroke none -draw "$DLC" "$2"
+    magick "$1" -fill none -stroke "$C" -strokewidth "$((2*R))" \
+        -draw "$DCC" -font FreeSans-Bold -fill "$C" -stroke none \
+        -draw "$DLC" "$2"
 }
 
 # $1 = image, $2 = prompt line, $3 = options
@@ -61,48 +60,48 @@ then
         printf '%s: label file %s already exists\n' "$0" "$3"
         exit 1
     fi
-    CL=`mktemp`
-    MI=`mktemp`
-    iv "$2" | tr -d ',' >"$CL"
+    coord_list=`mktemp`
+    marked_image=`mktemp`
+    iv "$2" | tr -d ',' >"$coord_list"
     while read X Y
     do
-        dotmark "$2" "$MI" "$X" "$Y" '' red
-        PN=`dmenuiv "$MI" "What's here ($X, $Y)?"`
-        printf '%d %d %s\n' "$X" "$Y" "$PN" >>"$3"
-    done <"$CL"
-    rm "$CL" "$MI"
+        dotmark "$2" "$marked_image" "$X" "$Y" '' red
+        name=`dmenuiv "$marked_image" "What's here ($X, $Y)?"`
+        printf '%d %d %s\n' "$X" "$Y" "$name" >>"$3"
+    done <"$coord_list"
+    rm "$coord_list" "$marked_image"
 
 elif [ "$1" = teach ]
 then
-    A=`mktemp`
-    B=`mktemp`
-    cp "$2" "$A"
+    prev_marked=`mktemp`
+    next_marked=`mktemp`
+    cp "$2" "$prev_marked"
     while read X Y NAME
     do
-        dotmark "$A" "$B" "$X" "$Y" "$NAME" DarkGreen
-        mv "$B" "$A"
+        dotmark "$prev_marked" "$next_marked" "$X" "$Y" "$NAME" DarkGreen
+        mv "$next_marked" "$prev_marked"
         printf 'Marked %s\n' "$NAME"
     done <"$3"
     printf 'Save to file: '
     read FN
-    mv "$A" "$FN"
+    mv "$prev_marked" "$FN"
     iv "$FN"
 
 elif [ "$1" = names ]
 then
     namelist "$3"
     initqc "$3"
-    MI=`mktemp`
-    while [ -s "$PF" ]
+    marked_image=`mktemp`
+    while [ -s "$points_left" ]
     do
-        shuf <"$PF" | while read TX TY NAME
+        shuf <"$points_left" | while read TX TY NAME
         do
-            dotmark "$2" "$MI" "$TX" "$TY" '' red
-            UR=`dmenuiv "$MI" "What's here?" "$NL"`
-            if [ "$UR" = quit ]
+            dotmark "$2" "$marked_image" "$TX" "$TY" '' red
+            response=`dmenuiv "$marked_image" "What's here?" "$name_options"`
+            if [ "$response" = quit ]
             then
                 break
-            elif [ "$UR" = "$NAME" ]
+            elif [ "$response" = "$NAME" ]
             then
                 printf 'Correct: %s\n' "$NAME"
             else
@@ -111,95 +110,93 @@ then
         done
         reteach "$2"
     done
-    rm "$MI"
-    : 'include list of options for dmenu, mayhaps'
-    : 'try asking for each sans any other labels, then redo the ones you failed with nearest neighbour labelled'
-    : 'also consider label -> place learning instead of place -> label learning'
+    rm "$marked_image"
 
 elif [ "$1" = place ]
 then
     initqc "$3"
-    PC=`mktemp`
-    while [ -s "$PF" ]
+    clicks=`mktemp`
+    while [ -s "$points_left" ]
     do
-        iv "$2" >"$PC" &
+        iv "$2" >"$clicks" &
         IV_PID="$!"
-        shuf <"$PF" | while read TX TY NAME
+        shuf <"$points_left" | while read TX TY NAME
         do
             printf 'Where is %s?\n' "$NAME"
-            while ! [ -s "$PC" ]
+            while ! [ -s "$clicks" ]
             do
                 sleep 0.2
             done
-            read PX PY <"$PC"
+            read PX PY <"$clicks"
             PX="${PX%%,}"
-            printf '' >"$PC"
-            MD=''
+            printf '' >"$clicks"
+            min_dist=''
             while read X Y N
             do
                 D=`distance "$X" "$Y" "$PX" "$PY"`
-                if [ -z "$MD" ] || [ "$D" -lt "$MD" ]
+                if [ -z "$min_dist" ] || [ "$D" -lt "$min_dist" ]
                 then
-                    MD="$D"
-                    MN="$N"
+                    min_dist="$D"
+                    min_name="$N"
                 fi
             done <"$3"
-            if [ "$MN" = "$NAME" ]
+            if [ "$min_name" = "$NAME" ]
             then
                 printf 'Correct\n'
             else
-                mistake "$MN"
+                mistake "$min_name"
             fi
         done
         kill "$IV_PID"
         reteach "$2"
     done
-    rm "$PC"
-    : 'given label, click the place, check if nearest'
+    rm "$clicks"
 
 elif [ "$1" = close ]
 then
     K=2
-    NN=`mktemp`
-    CP=`mktemp`
+    neighbours=`mktemp`
+    covered=`mktemp`
     namelist "$3"
     initqc "$3"
-    while [ -s "$PF" ]
+    while [ -s "$points_left" ]
     do
-        shuf <"$PF" | while read TX TY NAME
+        shuf <"$points_left" | while read TX TY NAME
         do
-            if grep -q "$NAME" "$CP"
+            if grep -q "$NAME" "$covered"
             then
                 continue
             fi
             while read X Y N
             do
                 printf '%d %s\n' `distance "$X" "$Y" "$TX" "$TY"` "$N"
-            done <"$3" | sort -n | tail -n +2 | sed 's/^[0-9]\+ //' | head -n "$((3*K))" >"$NN"
+            done <"$3" | sort -n | tail -n +2 | sed 's/^[0-9]\+ //' | \
+                head -n "$((3*K))" >"$neighbours"
             printf 'What places are near %s?\n' "$NAME"
             J=0
             while [ "$J" -lt "$K" ]
             do
-                UG=`dmenu -i <"$NL"`
-                if [ -n "$UG" ] && (head -n "$((2*K))" "$NN" | grep -q "$UG")
+                guess=`dmenu -i <"$name_options"`
+                if [ -n "$guess" ] && \
+                    (head -n "$((2*K))" "$neighbours" | grep -q "$guess")
                 then
-                    printf 'Correct: %s\n' "$UG"
+                    printf 'Correct: %s\n' "$guess"
                     J="$((J+1))"
-                elif [ -n "$UG" ] && grep -q "$UG" "$NN"
+                elif [ -n "$guess" ] && grep -q "$guess" "$neighbours"
                 then
-                    printf 'Go closer than %s\n' "$UG"
+                    printf 'Go closer than %s\n' "$guess"
                 else
-                    mistake "$(paste -sd ' ' <"$NN")"
+                    mistake "$(paste -sd ' ' <"$neighbours")"
                     break
                 fi
             done
-            printf '%s\n' "$NAME" >>"$CP"
-            head -n "$K" "$NN" >>"$CP"
+            printf '%s\n' "$NAME" >>"$covered"
+            head -n "$K" "$neighbours" >>"$covered"
         done
         reteach "$2"
-        printf '' >"$CP"
+        printf '' >"$covered"
     done
-    rm "$NN" "$CP"
+    rm "$neighbours" "$covered"
 
 elif [ "$1" = cards ]
 then
@@ -230,4 +227,4 @@ else
     exit 1
 fi
 
-rm "$PF" "$NF" "$NL"
+rm "$points_left" "$failures" "$name_options"
