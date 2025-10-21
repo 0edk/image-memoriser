@@ -53,8 +53,9 @@ dmenuiv() {
     kill "$IV_PID"
 }
 
-if [ "$1" = label ]
-then
+case "$1" in
+
+label)
     if [ -f "$3" ]
     then
         printf '%s: label file %s already exists\n' "$0" "$3"
@@ -70,9 +71,9 @@ then
         printf '%d %d %s\n' "$X" "$Y" "$name" >>"$3"
     done <"$coord_list"
     rm "$coord_list" "$marked_image"
+    ;;
 
-elif [ "$1" = teach ]
-then
+teach)
     prev_marked=`mktemp`
     next_marked=`mktemp`
     cp "$2" "$prev_marked"
@@ -86,9 +87,9 @@ then
     read FN
     mv "$prev_marked" "$FN"
     iv "$FN"
+    ;;
 
-elif [ "$1" = names ]
-then
+names)
     namelist "$3"
     initqc "$3"
     marked_image=`mktemp`
@@ -111,9 +112,9 @@ then
         reteach "$2"
     done
     rm "$marked_image"
+    ;;
 
-elif [ "$1" = place ]
-then
+place)
     initqc "$3"
     clicks=`mktemp`
     while [ -s "$points_left" ]
@@ -151,9 +152,9 @@ then
         reteach "$2"
     done
     rm "$clicks"
+    ;;
 
-elif [ "$1" = close ]
-then
+close)
     K=2
     neighbours=`mktemp`
     covered=`mktemp`
@@ -197,34 +198,14 @@ then
         printf '' >"$covered"
     done
     rm "$neighbours" "$covered"
+    ;;
 
-elif [ "$1" = cards ]
-then
-    printf 'Object name (country, province, building, etc): '
-    read GON
-    printf 'Memoire base path: '
-    read MBP
-    printf 'Topic directory: '
-    read IFN
-    printf 'Card file: '
-    read COF
-    A=`mktemp`
-    B=`mktemp`
-    cp "$2" "$A"
-    K=1
-    while read X Y NAME
-    do
-        dotmark "$A" "$B" "$X" "$Y" '' DarkRed
-        printf 'geography: {%s} (%s) = {IMG[%s/%s_%d.png]} (location)\n\n' "$NAME" "$GON" "$IFN" "${2%.*}" "$K" >>"$COF"
-        mv "$B" "$MBP/$IFN/${2%.*}_$K.png"
-        K="$((K+1))"
-    done <"$3"
-    rm "$A" "$B"
-    : 'generate Memoire card for each location'
-
-else
-    printf '%s: need mode label/teach/names/place/cards\n' "$0"
+*)
+    printf '%s: need mode, one of\n' "$0"
+    printf '%s\n' `grep '^[a-z]\+)' "$0" | tr -d ')'`
     exit 1
-fi
+    ;;
+
+esac
 
 rm "$points_left" "$failures" "$name_options"
