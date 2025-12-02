@@ -41,14 +41,10 @@ def note_from_links(
         return note
     return None
 
-def angle_to_direction(angle_deg: float) -> str:
-    idx = round(angle_deg / 45) % 8
-    primary = ["E", "N", "W", "S"]
-    if idx % 4 == 0:
-        return primary[idx // 2]
-    main_dir = primary[idx // 2]
-    next_dir = primary[(idx // 2 + 1) % 4]
-    return next_dir + main_dir
+def vector_to_direction(dx: float, dy: float) -> str:
+    critical = 1 + math.sqrt(2)
+    return ((("N", "S")[dy > 0] if critical * abs(dy) > abs(dx) else "") +
+        (("E", "W")[dx < 0] if abs(dy) < critical * abs(dx) else ""))
 
 def opposite_direction(direction: str) -> str:
     opposites = {"N": "S", "S": "N", "E": "W", "W": "E"}
@@ -63,7 +59,6 @@ def links_from_points(
             links.append((label, "", ""))
         else:
             x2, y2, _ = points[i + 1]
-            direction = angle_to_direction(math.degrees(math.atan2(
-                y1 - y2, x2 - x1)) % 360)
+            direction = vector_to_direction(x2 - x1, y2 - y1)
             links.append((label, direction, opposite_direction(direction)))
     return links
